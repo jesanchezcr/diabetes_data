@@ -1,0 +1,128 @@
+---
+title: "test"
+author: "Jenny"
+date: "10/26/2020"
+output: html_notebook
+runtime: shiny
+---
+
+
+```{r setup, include=FALSE}
+#install.packages("neuralnet", dependencies = TRUE) # Se instala una sola vez
+library(neuralnet) 
+library(readr)
+library(varhandle)
+library(dplyr)
+library(aod)
+library(nnet)
+library(class)
+library(mice)
+library(naniar)
+library(e1071)
+
+
+# Import data
+diabetic_data <- as.data.frame(read.csv("~/Documents/ML/dataset_diabetes/diabetic_data.csv",head=TRUE,sep=",",stringsAsFactors = TRUE))
+
+```
+## Variable a estimar
+La variable a estimar es "readmitted", la cual indica si un paciente ingresado por urgencias con diabetes deberá volver nuevamente antes de 30 días, después de 30 días o ya no debe volver.
+```{r}
+barplot(table(factor(diabetic_data$readmitted)))
+```
+
+## Preparación de datos
+
+Primero, para la importación de los datos, se eliminan las variables cuya varianza es 0 o casi 0.
+```{r}
+diabetic_data <- subset(diabetic_data, select=-c(encounter_id,patient_nbr,examide,citoglipton,acetohexamide,troglitazone,glimepiride.pioglitazone,metformin.pioglitazone,metformin.rosiglitazone))
+```
+A continuación se alistarán los datos para el tratamiento de datos nulos.
+```{r}
+
+diabetic_data <- replace_with_na(data=diabetic_data,replace=list(admission_type_id = c(5,6,8)))
+diabetic_data <- replace_with_na(data=diabetic_data,replace=list(c('?')))
+diabetic_data <- replace_with_na(data=diabetic_data,replace=list(gender = c('Unknown/Invalid')))
+diabetic_data <- replace_with_na(data=diabetic_data,replace=list(discharge_disposition_id = c(18,25,26)))
+diabetic_data <- replace_with_na(data=diabetic_data,replace=list(admission_source_id = c(9,15,17,20,21)))
+
+factor_to_number = function(x){
+  if (class(x)=='factor')
+    x%>%as.numeric(factor(x))
+  else
+    x
+}
+diabetic_data <-as.data.frame(sapply(diabetic_data,factor_to_number))
+
+diabetic_data$admission_type_id <- factor(diabetic_data$admission_type_id)
+diabetic_data$race <- factor(diabetic_data$race)
+diabetic_data$gender <- factor(diabetic_data$gender)
+diabetic_data$discharge_disposition_id <- factor(diabetic_data$discharge_disposition_id)
+diabetic_data$admission_source_id <- factor(diabetic_data$admission_source_id)
+
+```
+
+Ahora, realizaremos la imputación de los valores faltantes por medio de la librería **MICE**, utilizando el modelo **predictive mean matching** para imputación de valores de cualquier tipo, en este caso variables categóricas.
+
+```{r}
+mice_diabetic_data <- mice(diabetic_data,m=2,maxit=3,meth='pmm',seed=500)
+summary(mice_diabetic_data)
+completed_data <- complete(mice_diabetic_data,1)
+
+```
+A continuación se separará el dataset en 70% para entrenamiento y 30% para testing.
+
+```{r}
+# Split Data into Training and Testing in R 
+sample_size = floor(0.7*nrow(completed_data))
+set.seed(777)
+
+# randomly split data in r
+picked = sample(seq_len(nrow(completed_data)),size = sample_size)
+development = completed_data[picked,]
+holdout = completed_data[-picked,]
+completed_data <- as.data.frame(completed_data)
+development <- as.data.frame(development)
+holdout <- as.data.frame(holdout)
+
+```
+# Solución
+Habiendo separado los datos, a continuación haremos tres métodos distintos para probar cuál ajusta mejor los datos.  Los métodos utilizados son de aprendizaje supervisado de clasificación, para poder determinar la variable "readmitted".
+
+## Regresión logística multinomial
+
+En el siguiente modelo, podemos observar que el ajuste es del 57.45% de los datos de prueba.
+```{r}
+#multinomial logistic regression
+
+mylogit <- multinom(factor(readmitted) ~ ., data = development,MaxNWts =10000000)
+mylogit.results <- predict(mylogit,holdout)
+results.logit <- data.frame(actual = holdout$readmitted, prediction = mylogit.results)
+fit <- count(filter(results.logit,actual==prediction))/count(results.logit) #0,5745
+summary(mylogit)
+
+```
+## SVM
+
+En el siguiente modelo, podemos observar que el ajuste es del 57.48% de los datos de prueba.
+```{r}
+# svm supervised
+svm.model <- e1071::svm(readmitted ~ ., data = as.data.frame(development))
+svm.results <- predict(svm.model,holdout)
+results.svm <- data.frame(actual = na.omit(holdout)$readmitted, prediction = svm.results)
+fit <- count(filter(results.svm,actual==round(prediction)))/count(results.svm) # 0.5748772
+```
+
+## K Nearest Neighbors 
+```{r}
+#knn
+knn.model <- knn(na.omit(development),na.omit(holdout),factor(na.omit(development)$readmitted),k=20)
+tab <- table(knn.model,as.data.frame(na.omit(holdout))$readmitted)
+results.knn <- data.frame(actual = as.data.frame(na.omit(holdout))$readmitted,prediction = knn.model)
+fit <- count(filter(results.knn,actual==prediction))/count(results.knn) # 0.5218146
+
+```
+
+## Conclusiones
+
+Comparando los tres modelos, podemos ver que el que tiene mayor accuracy es Support Vector Machine, con un porcentaje de acierto del 57.48%, seguido de la regresión logística, con un porcentaje de acierto del 57.45%, y por último K nearest neighbors con un porcentaje del 52.18%.

@@ -1,0 +1,11 @@
+"0","library(mice)
+"
+"2","
+Attaching package: ‘mice’
+
+"
+"2","The following objects are masked from ‘package:base’:
+
+    cbind, rbind
+
+"

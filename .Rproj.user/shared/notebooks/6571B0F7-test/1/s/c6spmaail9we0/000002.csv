@@ -1,0 +1,5 @@
+"0","diabetic_data <- replace_with_na(data=diabetic_data,replace=list(admission_type_id = c(5,6,8)))
+"
+"2","Error in replace_with_na(data = diabetic_data, replace = list(admission_type_id = c(5,  : 
+  could not find function ""replace_with_na""
+"

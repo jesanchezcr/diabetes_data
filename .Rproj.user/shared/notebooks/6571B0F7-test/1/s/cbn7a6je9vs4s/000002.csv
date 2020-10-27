@@ -1,0 +1,5 @@
+"0","diabetic_data <- subset(diabetic_data, select=-c(encounter_id,patient_nbr,examide,citoglipton,acetohexamide,troglitazone,glimepiride.pioglitazone,metformin.pioglitazone,metformin.rosiglitazone))
+"
+"2","Error in eval(substitute(select), nl, parent.frame()) : 
+  object 'encounter_id' not found
+"
